@@ -1,0 +1,30 @@
+spec_version: 1
+name: data-pipeline-debugger-openenv
+type: space
+runtime: fastapi
+app: app:app
+port: 7860
+version: 1.0.0
+description: >
+  A real-world OpenEnv environment where agents debug broken ETL pipelines
+  across schema, null, type, and aggregation regressions.
+tags:
+  - openenv
+  - rl
+  - data-engineering
+  - etl
+entrypoint: openenv_datapipeline.env:DataPipelineDebuggerEnv
+models:
+  observation: openenv_datapipeline.models:PipelineObservation
+  action: openenv_datapipeline.models:PipelineAction
+  reward: openenv_datapipeline.models:PipelineReward
+tasks:
+  - id: easy_schema_mismatch
+    difficulty: easy
+    objective: Fix customer_id type mismatch between ingest and transform.
+  - id: medium_null_and_cast
+    difficulty: medium
+    objective: Resolve null propagation and unsafe cast bugs.
+  - id: hard_multibug_regression
+    difficulty: hard
+    objective: Repair timezone, deduplication, and refund-sign regressions.
