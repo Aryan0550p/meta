@@ -23,6 +23,11 @@ BUG_EXPLANATIONS = {
     "H1": "Timezone timestamp normalization issue causing window shift.",
     "H2": "Deduplication bug with duplicate events causing double counting.",
     "H3": "Business rule sign handling error in refund logic.",
+    "L1": "Contract rename without schema evolution versioning caused downstream breakage.",
+    "L2": "Lineage mapping points to deprecated source, causing stale joins.",
+    "S1": "Watermark policy drops late events instead of routing to backfill lane.",
+    "S2": "Dedupe key collision because source_system is missing from key.",
+    "S3": "SLA guard retries full partition rather than incremental delta updates.",
 }
 
 

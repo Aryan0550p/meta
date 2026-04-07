@@ -39,11 +39,13 @@ Typed Pydantic models:
 
 ## Tasks and graders
 
-Three deterministic tasks with increasing difficulty:
+Five deterministic tasks with increasing difficulty:
 
 1. easy_schema_mismatch (easy)
 2. medium_null_and_cast (medium)
 3. hard_multibug_regression (hard)
+4. medium_lineage_contract_break (medium)
+5. hard_sla_backfill_dedupe (hard)
 
 Grader properties:
 
@@ -114,10 +116,11 @@ Logs are emitted in structured format using `[START]`, `[STEP]`, and `[END]` lin
 
 With deterministic fallback mode (unreachable API base URL) and `SEED=42`:
 
-- easy_schema_mismatch: score 1.0000 (3 steps)
-- medium_null_and_cast: score 1.0000 (5 steps)
-- hard_multibug_regression: score 1.0000 (9 steps)
-- average_score: 1.0000
+- easy_schema_mismatch: deterministic fallback policy solves task
+- medium_null_and_cast: deterministic fallback policy solves task
+- hard_multibug_regression: deterministic fallback policy solves task
+- medium_lineage_contract_break: deterministic fallback policy solves task
+- hard_sla_backfill_dedupe: deterministic fallback policy solves task
 
 Run command used:
 

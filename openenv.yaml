@@ -28,3 +28,9 @@ tasks:
   - id: hard_multibug_regression
     difficulty: hard
     objective: Repair timezone, deduplication, and refund-sign regressions.
+  - id: medium_lineage_contract_break
+    difficulty: medium
+    objective: Restore broken data contract and stale lineage mapping.
+  - id: hard_sla_backfill_dedupe
+    difficulty: hard
+    objective: Fix backfill watermark, dedupe-key, and SLA guard regressions.

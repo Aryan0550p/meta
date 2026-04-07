@@ -223,6 +223,11 @@ class DataPipelineDebuggerEnv:
             "H1": {"window_consistency_check", "type_check"},
             "H2": {"idempotency_check", "business_rule_check"},
             "H3": {"business_rule_check", "type_check"},
+            "L1": {"contract_check", "schema_check"},
+            "L2": {"lineage_check", "referential_integrity"},
+            "S1": {"window_consistency_check", "sla_guard_check"},
+            "S2": {"idempotency_check", "business_rule_check"},
+            "S3": {"sla_guard_check", "business_rule_check"},
         }
         return rule in mapping.get(bug_id, set())
 

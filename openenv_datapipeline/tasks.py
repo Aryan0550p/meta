@@ -86,6 +86,72 @@ TASKS: Dict[str, Dict] = {
             },
         ],
     },
+    "medium_lineage_contract_break": {
+        "title": "Recover Broken Data Contract and Lineage",
+        "difficulty": "medium",
+        "max_steps": 20,
+        "objective": "Restore downstream compatibility after a producer contract rename and stale lineage mapping.",
+        "stages": ["ingest", "transform", "contract", "load"],
+        "rules": [
+            "schema_check",
+            "lineage_check",
+            "contract_check",
+            "referential_integrity",
+        ],
+        "bugs": [
+            {
+                "bug_id": "L1",
+                "title": "producer renamed customer_email to email_primary without contract bump",
+                "stage": "contract",
+                "severity": "high",
+                "valid_explanations": ["contract", "rename", "schema evolution"],
+            },
+            {
+                "bug_id": "L2",
+                "title": "lineage map still points to deprecated source.orders_v1",
+                "stage": "transform",
+                "severity": "medium",
+                "valid_explanations": ["lineage", "deprecated source", "mapping"],
+            },
+        ],
+    },
+    "hard_sla_backfill_dedupe": {
+        "title": "Stabilize Backfill Under SLA and Dedup Constraints",
+        "difficulty": "hard",
+        "max_steps": 28,
+        "objective": "Fix late-event backfill and dedup policy bugs while preserving SLA-safe aggregation.",
+        "stages": ["ingest", "transform", "backfill", "aggregate", "load"],
+        "rules": [
+            "null_check",
+            "window_consistency_check",
+            "idempotency_check",
+            "sla_guard_check",
+            "business_rule_check",
+        ],
+        "bugs": [
+            {
+                "bug_id": "S1",
+                "title": "late events beyond watermark are dropped instead of sent to backfill lane",
+                "stage": "backfill",
+                "severity": "high",
+                "valid_explanations": ["watermark", "late events", "backfill lane"],
+            },
+            {
+                "bug_id": "S2",
+                "title": "dedupe key excludes source_system causing cross-source collisions",
+                "stage": "aggregate",
+                "severity": "high",
+                "valid_explanations": ["dedupe key", "collision", "source_system"],
+            },
+            {
+                "bug_id": "S3",
+                "title": "SLA guard retries entire partition rather than incremental delta",
+                "stage": "load",
+                "severity": "medium",
+                "valid_explanations": ["sla", "partition retry", "incremental delta"],
+            },
+        ],
+    },
 }
 
 
