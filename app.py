@@ -26,9 +26,10 @@ def index() -> dict:
 
 
 @app.post("/reset")
-def reset(request: ResetRequest) -> dict:
+def reset(request: ResetRequest | None = None) -> dict:
+    task_id = request.task_id if request is not None else None
     try:
-        obs = env.reset(request.task_id)
+        obs = env.reset(task_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"observation": obs.model_dump()}
