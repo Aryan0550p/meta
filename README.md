@@ -1,3 +1,17 @@
+---
+title: Data Pipeline Debugger OpenEnv
+emoji: "🧪"
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+tags:
+  - openenv
+  - rl
+  - data-engineering
+---
+
 # Data Pipeline Debugger OpenEnv
 
 A real-world OpenEnv environment for training and evaluating AI agents on ETL incident debugging.
