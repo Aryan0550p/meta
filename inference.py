@@ -31,13 +31,17 @@ BUG_EXPLANATIONS = {
 }
 
 
-def build_client() -> OpenAI:
-    api_key = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("HF_TOKEN (or OPENAI_API_KEY) is required")
+def build_client() -> Optional[OpenAI]:
+    api_key = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY") or "dummy"
 
-    base_url = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-    return OpenAI(api_key=api_key, base_url=base_url)
+    base_url = (os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1").strip()
+    if not (base_url.startswith("http://") or base_url.startswith("https://")):
+        base_url = "https://router.huggingface.co/v1"
+
+    try:
+        return OpenAI(api_key=api_key, base_url=base_url)
+    except Exception:
+        return None
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -58,7 +62,9 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
-def choose_action_with_llm(client: OpenAI, model_name: str, observation: Dict[str, Any]) -> PipelineAction:
+def choose_action_with_llm(client: Optional[OpenAI], model_name: str, observation: Dict[str, Any]) -> PipelineAction:
+    if client is None:
+        raise RuntimeError("OpenAI client unavailable")
     system_prompt = (
         "You are a senior data engineer fixing ETL pipeline bugs. "
         "Return only JSON with keys: action_type, stage, rule, bug_id, explanation. "
@@ -112,7 +118,7 @@ def fallback_action(observation: Dict[str, Any]) -> PipelineAction:
     return PipelineAction(action_type="finish")
 
 
-def run_task(client: OpenAI, model_name: str, task_id: str) -> Dict[str, Any]:
+def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[str, Any]:
     env = DataPipelineDebuggerEnv(default_task_id=task_id)
     random.seed(SEED)
     rewards: List[float] = []
