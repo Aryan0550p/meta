@@ -32,9 +32,9 @@ BUG_EXPLANATIONS = {
 
 
 def build_client() -> Optional[OpenAI]:
-    # Validator requirement: use injected proxy endpoint and key.
+    # Strict validator contract: use injected API_BASE_URL and API_KEY.
     base_url = (os.getenv("API_BASE_URL") or "").strip()
-    api_key = (os.getenv("API_KEY") or os.getenv("HF_TOKEN") or "").strip()
+    api_key = (os.getenv("API_KEY") or "").strip()
 
     if not base_url:
         return None
@@ -240,6 +240,12 @@ def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[st
 def main() -> None:
     model_name = os.getenv("MODEL_NAME") or ""
     client = build_client()
+
+    print(
+        "[INFO] proxy_env_present="
+        + str(bool(os.getenv("API_BASE_URL")) and bool(os.getenv("API_KEY"))).lower(),
+        flush=True,
+    )
 
     available_models = proxy_probe_models(client)
     model_name = resolve_model_name(available_models, model_name)
