@@ -32,9 +32,21 @@ BUG_EXPLANATIONS = {
 
 
 def build_client() -> Optional[OpenAI]:
-    api_key = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or os.getenv("API_KEY") or "dummy"
+    # Validator requirement: use injected LiteLLM proxy env vars.
+    proxy_base_url = (os.getenv("API_BASE_URL") or "").strip()
+    proxy_api_key = (os.getenv("API_KEY") or "").strip()
 
-    base_url = (os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1").strip()
+    # Local fallback only when validator vars are absent.
+    fallback_base_url = (os.getenv("API_BASE_URL_FALLBACK") or "https://router.huggingface.co/v1").strip()
+    fallback_api_key = (os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or "dummy").strip()
+
+    if proxy_base_url and proxy_api_key:
+        base_url = proxy_base_url
+        api_key = proxy_api_key
+    else:
+        base_url = fallback_base_url
+        api_key = fallback_api_key
+
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
         base_url = "https://router.huggingface.co/v1"
 
