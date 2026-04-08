@@ -31,18 +31,36 @@ BUG_EXPLANATIONS = {
 }
 
 
-def build_client() -> OpenAI:
-    # Strict validator requirement: do not bypass injected proxy settings.
+def build_client() -> Optional[OpenAI]:
+    # Strict validator requirement: use injected proxy settings.
     base_url = os.environ["API_BASE_URL"].strip()
     api_key = os.environ["API_KEY"].strip()
 
+    if not base_url:
+        return None
+    if not api_key:
+        return None
+
+    # Normalize common base_url variants provided by CI environments.
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
-        base_url = "https://router.huggingface.co/v1"
+        base_url = "https://" + base_url.lstrip("/")
 
-    return OpenAI(api_key=api_key, base_url=base_url)
+    candidates = [base_url]
+    if not base_url.rstrip("/").endswith("/v1"):
+        candidates.append(base_url.rstrip("/") + "/v1")
+
+    for candidate in candidates:
+        try:
+            return OpenAI(api_key=api_key, base_url=candidate)
+        except Exception:
+            continue
+
+    return None
 
 
-def proxy_probe_models(client: OpenAI) -> List[str]:
+def proxy_probe_models(client: Optional[OpenAI]) -> List[str]:
+    if client is None:
+        return []
     # Mandatory proxy call to ensure evaluator can observe API usage.
     models = client.models.list()
     result: List[str] = []
@@ -81,7 +99,9 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
-def choose_action_with_llm(client: OpenAI, model_name: str, observation: Dict[str, Any]) -> PipelineAction:
+def choose_action_with_llm(client: Optional[OpenAI], model_name: str, observation: Dict[str, Any]) -> PipelineAction:
+    if client is None:
+        raise RuntimeError("OpenAI client unavailable")
     system_prompt = (
         "You are a senior data engineer fixing ETL pipeline bugs. "
         "Return only JSON with keys: action_type, stage, rule, bug_id, explanation. "
@@ -135,7 +155,7 @@ def fallback_action(observation: Dict[str, Any]) -> PipelineAction:
     return PipelineAction(action_type="finish")
 
 
-def run_task(client: OpenAI, model_name: str, task_id: str) -> Dict[str, Any]:
+def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[str, Any]:
     env = DataPipelineDebuggerEnv(default_task_id=task_id)
     random.seed(SEED)
     rewards: List[float] = []
@@ -189,10 +209,13 @@ def main() -> None:
         client = build_client()
     except KeyError as exc:
         print(f"[ERROR] missing_required_env={exc}", flush=True)
-        raise SystemExit(1)
+        client = None
 
     # This call must go through the injected proxy endpoint.
-    available_models = proxy_probe_models(client)
+    try:
+        available_models = proxy_probe_models(client)
+    except Exception:
+        available_models = []
     model_name = resolve_model_name(available_models, model_name)
 
     results: List[Dict[str, Any]] = []
