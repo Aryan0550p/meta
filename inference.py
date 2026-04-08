@@ -31,53 +31,34 @@ BUG_EXPLANATIONS = {
 }
 
 
-def build_client() -> Optional[OpenAI]:
-    # Strict validator alignment: only use injected proxy credentials.
-    try:
-        base_url = os.environ["API_BASE_URL"].strip()
-        api_key = os.environ["API_KEY"].strip()
-    except KeyError:
-        return None
+def build_client() -> OpenAI:
+    # Strict validator requirement: do not bypass injected proxy settings.
+    base_url = os.environ["API_BASE_URL"].strip()
+    api_key = os.environ["API_KEY"].strip()
 
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
         base_url = "https://router.huggingface.co/v1"
 
-    try:
-        return OpenAI(api_key=api_key, base_url=base_url)
-    except Exception:
-        return None
+    return OpenAI(api_key=api_key, base_url=base_url)
 
 
-def warmup_proxy_call(client: Optional[OpenAI], model_name: str) -> None:
-    if client is None:
-        return
-    # Force at least one request through configured proxy credentials.
-    client.chat.completions.create(
-        model=model_name,
-        temperature=0.0,
-        max_tokens=1,
-        messages=[
-            {"role": "system", "content": "Return JSON only."},
-            {"role": "user", "content": "{}"},
-        ],
-    )
+def proxy_probe_models(client: OpenAI) -> List[str]:
+    # Mandatory proxy call to ensure evaluator can observe API usage.
+    models = client.models.list()
+    result: List[str] = []
+    for m in models.data:
+        model_id = getattr(m, "id", "")
+        if model_id:
+            result.append(str(model_id))
+    return result
 
 
-def resolve_model_name(client: Optional[OpenAI], preferred_model: str) -> str:
-    if client is None:
-        return preferred_model or "gpt-4o-mini"
-
+def resolve_model_name(available_models: List[str], preferred_model: str) -> str:
     if preferred_model:
         return preferred_model
 
-    try:
-        models = client.models.list()
-        for m in models.data:
-            model_id = getattr(m, "id", "")
-            if model_id:
-                return str(model_id)
-    except Exception:
-        pass
+    if available_models:
+        return available_models[0]
 
     return "gpt-4o-mini"
 
@@ -100,9 +81,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
-def choose_action_with_llm(client: Optional[OpenAI], model_name: str, observation: Dict[str, Any]) -> PipelineAction:
-    if client is None:
-        raise RuntimeError("OpenAI client unavailable")
+def choose_action_with_llm(client: OpenAI, model_name: str, observation: Dict[str, Any]) -> PipelineAction:
     system_prompt = (
         "You are a senior data engineer fixing ETL pipeline bugs. "
         "Return only JSON with keys: action_type, stage, rule, bug_id, explanation. "
@@ -156,7 +135,7 @@ def fallback_action(observation: Dict[str, Any]) -> PipelineAction:
     return PipelineAction(action_type="finish")
 
 
-def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[str, Any]:
+def run_task(client: OpenAI, model_name: str, task_id: str) -> Dict[str, Any]:
     env = DataPipelineDebuggerEnv(default_task_id=task_id)
     random.seed(SEED)
     rewards: List[float] = []
@@ -206,14 +185,15 @@ def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[st
 
 def main() -> None:
     model_name = os.getenv("MODEL_NAME") or ""
-    client = build_client()
-    model_name = resolve_model_name(client, model_name)
-
     try:
-        warmup_proxy_call(client, model_name)
-    except Exception:
-        # Continue; per-step calls still attempt the same client and fallback policy.
-        pass
+        client = build_client()
+    except KeyError as exc:
+        print(f"[ERROR] missing_required_env={exc}", flush=True)
+        raise SystemExit(1)
+
+    # This call must go through the injected proxy endpoint.
+    available_models = proxy_probe_models(client)
+    model_name = resolve_model_name(available_models, model_name)
 
     results: List[Dict[str, Any]] = []
     for task_id in list_task_ids():
