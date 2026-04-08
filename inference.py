@@ -32,14 +32,12 @@ BUG_EXPLANATIONS = {
 
 
 def build_client() -> Optional[OpenAI]:
-    # Validator requirement: use injected LiteLLM proxy env vars when provided.
-    if "API_BASE_URL" in os.environ and "API_KEY" in os.environ:
+    # Strict validator alignment: only use injected proxy credentials.
+    try:
         base_url = os.environ["API_BASE_URL"].strip()
         api_key = os.environ["API_KEY"].strip()
-    else:
-        # Local fallback only when validator vars are absent.
-        base_url = (os.getenv("API_BASE_URL_FALLBACK") or "https://router.huggingface.co/v1").strip()
-        api_key = (os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or "dummy").strip()
+    except KeyError:
+        return None
 
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
         base_url = "https://router.huggingface.co/v1"
@@ -63,6 +61,25 @@ def warmup_proxy_call(client: Optional[OpenAI], model_name: str) -> None:
             {"role": "user", "content": "{}"},
         ],
     )
+
+
+def resolve_model_name(client: Optional[OpenAI], preferred_model: str) -> str:
+    if client is None:
+        return preferred_model or "gpt-4o-mini"
+
+    if preferred_model:
+        return preferred_model
+
+    try:
+        models = client.models.list()
+        for m in models.data:
+            model_id = getattr(m, "id", "")
+            if model_id:
+                return str(model_id)
+    except Exception:
+        pass
+
+    return "gpt-4o-mini"
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -99,14 +116,14 @@ def choose_action_with_llm(client: Optional[OpenAI], model_name: str, observatio
     completion = client.chat.completions.create(
         model=model_name,
         temperature=0.0,
+        max_tokens=200,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        response_format={"type": "json_object"},
     )
 
-    raw = completion.choices[0].message.content or "{}"
+    raw = (completion.choices[0].message.content or "").strip()
     payload = json.loads(raw)
     return PipelineAction(**payload)
 
@@ -188,8 +205,9 @@ def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[st
 
 
 def main() -> None:
-    model_name = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+    model_name = os.getenv("MODEL_NAME") or ""
     client = build_client()
+    model_name = resolve_model_name(client, model_name)
 
     try:
         warmup_proxy_call(client, model_name)

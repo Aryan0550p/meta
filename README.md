@@ -114,6 +114,7 @@ docker run -p 7860:7860 data-pipeline-debugger
 Required environment variables:
 
 - `API_BASE_URL`
+- `API_KEY` (validator-injected LiteLLM proxy key used by OpenAI client)
 - `MODEL_NAME`
 - `HF_TOKEN`
 - `OPENAI_API_KEY` (optional fallback if `HF_TOKEN` is not set)
