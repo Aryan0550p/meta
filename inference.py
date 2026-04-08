@@ -32,20 +32,14 @@ BUG_EXPLANATIONS = {
 
 
 def build_client() -> Optional[OpenAI]:
-    # Validator requirement: use injected LiteLLM proxy env vars.
-    proxy_base_url = (os.getenv("API_BASE_URL") or "").strip()
-    proxy_api_key = (os.getenv("API_KEY") or "").strip()
-
-    # Local fallback only when validator vars are absent.
-    fallback_base_url = (os.getenv("API_BASE_URL_FALLBACK") or "https://router.huggingface.co/v1").strip()
-    fallback_api_key = (os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or "dummy").strip()
-
-    if proxy_base_url and proxy_api_key:
-        base_url = proxy_base_url
-        api_key = proxy_api_key
+    # Validator requirement: use injected LiteLLM proxy env vars when provided.
+    if "API_BASE_URL" in os.environ and "API_KEY" in os.environ:
+        base_url = os.environ["API_BASE_URL"].strip()
+        api_key = os.environ["API_KEY"].strip()
     else:
-        base_url = fallback_base_url
-        api_key = fallback_api_key
+        # Local fallback only when validator vars are absent.
+        base_url = (os.getenv("API_BASE_URL_FALLBACK") or "https://router.huggingface.co/v1").strip()
+        api_key = (os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY") or "dummy").strip()
 
     if not (base_url.startswith("http://") or base_url.startswith("https://")):
         base_url = "https://router.huggingface.co/v1"
@@ -54,6 +48,21 @@ def build_client() -> Optional[OpenAI]:
         return OpenAI(api_key=api_key, base_url=base_url)
     except Exception:
         return None
+
+
+def warmup_proxy_call(client: Optional[OpenAI], model_name: str) -> None:
+    if client is None:
+        return
+    # Force at least one request through configured proxy credentials.
+    client.chat.completions.create(
+        model=model_name,
+        temperature=0.0,
+        max_tokens=1,
+        messages=[
+            {"role": "system", "content": "Return JSON only."},
+            {"role": "user", "content": "{}"},
+        ],
+    )
 
 
 def log_start(task: str, env: str, model: str) -> None:
@@ -181,6 +190,12 @@ def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[st
 def main() -> None:
     model_name = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
     client = build_client()
+
+    try:
+        warmup_proxy_call(client, model_name)
+    except Exception:
+        # Continue; per-step calls still attempt the same client and fallback policy.
+        pass
 
     results: List[Dict[str, Any]] = []
     for task_id in list_task_ids():
