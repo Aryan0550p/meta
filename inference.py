@@ -71,6 +71,44 @@ def proxy_probe_models(client: Optional[OpenAI]) -> List[str]:
     return result
 
 
+def ensure_proxy_call(client: Optional[OpenAI], preferred_model: str) -> tuple[bool, str]:
+    """Ensure at least one successful proxy-backed OpenAI call occurs before task loop."""
+    if client is None:
+        return False, preferred_model or "gpt-4o-mini"
+
+    candidate_models: List[str] = []
+    if preferred_model:
+        candidate_models.append(preferred_model)
+
+    try:
+        listed = proxy_probe_models(client)
+        for model_id in listed:
+            if model_id not in candidate_models:
+                candidate_models.append(model_id)
+    except Exception:
+        pass
+
+    if not candidate_models:
+        candidate_models = ["gpt-4o-mini"]
+
+    for model_name in candidate_models:
+        try:
+            client.chat.completions.create(
+                model=model_name,
+                temperature=0.0,
+                max_tokens=5,
+                messages=[
+                    {"role": "system", "content": "Return JSON only."},
+                    {"role": "user", "content": "{}"},
+                ],
+            )
+            return True, model_name
+        except Exception:
+            continue
+
+    return False, candidate_models[0]
+
+
 def resolve_model_name(available_models: List[str], preferred_model: str) -> str:
     if preferred_model:
         return preferred_model
@@ -211,12 +249,11 @@ def main() -> None:
         print(f"[ERROR] missing_required_env={exc}", flush=True)
         client = None
 
-    # This call must go through the injected proxy endpoint.
-    try:
-        available_models = proxy_probe_models(client)
-    except Exception:
-        available_models = []
-    model_name = resolve_model_name(available_models, model_name)
+    ok, resolved = ensure_proxy_call(client, model_name)
+    if not ok:
+        print("[ERROR] proxy_call_failed=true", flush=True)
+        raise SystemExit(1)
+    model_name = resolved
 
     results: List[Dict[str, Any]] = []
     for task_id in list_task_ids():
