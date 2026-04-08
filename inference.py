@@ -33,88 +33,37 @@ BUG_EXPLANATIONS = {
 
 def build_client() -> Optional[OpenAI]:
     # Strict validator requirement: use injected proxy settings.
-    base_url = os.environ["API_BASE_URL"].strip()
-    api_key = os.environ["API_KEY"].strip()
-
-    if not base_url:
-        return None
-    if not api_key:
+    try:
+        base_url = os.environ["API_BASE_URL"].strip()
+        api_key = os.environ["API_KEY"].strip()
+    except KeyError:
         return None
 
-    # Normalize common base_url variants provided by CI environments.
-    if not (base_url.startswith("http://") or base_url.startswith("https://")):
-        base_url = "https://" + base_url.lstrip("/")
-
-    candidates = [base_url]
-    if not base_url.rstrip("/").endswith("/v1"):
-        candidates.append(base_url.rstrip("/") + "/v1")
-
-    for candidate in candidates:
-        try:
-            return OpenAI(api_key=api_key, base_url=candidate)
-        except Exception:
-            continue
-
-    return None
-
-
-def proxy_probe_models(client: Optional[OpenAI]) -> List[str]:
-    if client is None:
-        return []
-    # Mandatory proxy call to ensure evaluator can observe API usage.
-    models = client.models.list()
-    result: List[str] = []
-    for m in models.data:
-        model_id = getattr(m, "id", "")
-        if model_id:
-            result.append(str(model_id))
-    return result
-
-
-def ensure_proxy_call(client: Optional[OpenAI], preferred_model: str) -> tuple[bool, str]:
-    """Ensure at least one successful proxy-backed OpenAI call occurs before task loop."""
-    if client is None:
-        return False, preferred_model or "gpt-4o-mini"
-
-    candidate_models: List[str] = []
-    if preferred_model:
-        candidate_models.append(preferred_model)
+    if not base_url or not api_key:
+        return None
 
     try:
-        listed = proxy_probe_models(client)
-        for model_id in listed:
-            if model_id not in candidate_models:
-                candidate_models.append(model_id)
+        return OpenAI(api_key=api_key, base_url=base_url)
     except Exception:
-        pass
-
-    if not candidate_models:
-        candidate_models = ["gpt-4o-mini"]
-
-    for model_name in candidate_models:
-        try:
-            client.chat.completions.create(
-                model=model_name,
-                temperature=0.0,
-                max_tokens=5,
-                messages=[
-                    {"role": "system", "content": "Return JSON only."},
-                    {"role": "user", "content": "{}"},
-                ],
-            )
-            return True, model_name
-        except Exception:
-            continue
-
-    return False, candidate_models[0]
+        return None
 
 
-def resolve_model_name(available_models: List[str], preferred_model: str) -> str:
+def warmup_proxy_call(client: OpenAI, model_name: str) -> None:
+    # Force at least one request through configured proxy credentials.
+    client.chat.completions.create(
+        model=model_name,
+        temperature=0.0,
+        max_tokens=1,
+        messages=[
+            {"role": "system", "content": "Return JSON only."},
+            {"role": "user", "content": "{}"},
+        ],
+    )
+
+
+def resolve_model_name(client: Optional[OpenAI], preferred_model: str) -> str:
     if preferred_model:
         return preferred_model
-
-    if available_models:
-        return available_models[0]
 
     return "gpt-4o-mini"
 
@@ -243,17 +192,15 @@ def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[st
 
 def main() -> None:
     model_name = os.getenv("MODEL_NAME") or ""
-    try:
-        client = build_client()
-    except KeyError as exc:
-        client = None
+    client = build_client()
 
-    ok, resolved = ensure_proxy_call(client, model_name)
-    model_name = resolved if resolved else (model_name or "gpt-4o-mini")
+    if client is None:
+        raise RuntimeError("Missing or invalid API_BASE_URL/API_KEY environment variables")
 
-    # If proxy call is not available, continue with deterministic fallback policy.
-    if not ok:
-        client = None
+    model_name = resolve_model_name(client, model_name)
+
+    # Fail fast if we cannot successfully hit the injected LiteLLM proxy.
+    warmup_proxy_call(client, model_name)
 
     results: List[Dict[str, Any]] = []
     for task_id in list_task_ids():
@@ -262,10 +209,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        # Final safeguard: avoid validator-visible unhandled exception exits.
-        safe_model = os.getenv("MODEL_NAME") or "gpt-4o-mini"
-        for task_id in list_task_ids():
-            run_task(None, safe_model, task_id)
+    main()
