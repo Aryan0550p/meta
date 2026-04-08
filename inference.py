@@ -35,9 +35,10 @@ def build_client() -> Optional[OpenAI]:
     # Strict validator requirement: use injected proxy settings.
     try:
         base_url = os.environ["API_BASE_URL"].strip()
-        api_key = os.environ["API_KEY"].strip()
     except KeyError:
         return None
+
+    api_key = (os.getenv("API_KEY") or os.getenv("HF_TOKEN") or "").strip()
 
     if not base_url or not api_key:
         return None
@@ -73,10 +74,11 @@ def log_start(task: str, env: str, model: str) -> None:
 
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
-    error_val = error if error else "null"
+    action_val = " ".join(action.splitlines())
+    error_val = " ".join(error.splitlines()) if error else "null"
     done_val = str(done).lower()
     print(
-        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        f"[STEP] step={step} action={action_val} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
     )
 
@@ -176,6 +178,7 @@ def run_task(client: Optional[OpenAI], model_name: str, task_id: str) -> Dict[st
 
         final_state = env.state()
         final_score = compute_task_score(final_state)
+        final_score = min(max(float(final_score), 0.0), 1.0)
         success = final_score >= 0.1
         return {
             "task_id": task_id,
